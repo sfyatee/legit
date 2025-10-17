@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"git.icyphox.sh/legit/git"
 	"github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	"labs.sfyatee.com/labs/git"
 )
 
 func (d *deps) Write404(w http.ResponseWriter) {
@@ -24,12 +24,12 @@ func (d *deps) Write404(w http.ResponseWriter) {
 	}
 }
 
-func (d *deps) Write500(w http.ResponseWriter) {
+func (d *deps) errorPage(w http.ResponseWriter) {
 	tpath := filepath.Join(d.c.Dirs.Templates, "*")
 	t := template.Must(template.ParseGlob(tpath))
 	w.WriteHeader(500)
-	if err := t.ExecuteTemplate(w, "500", nil); err != nil {
-		log.Printf("500 template: %s", err)
+	if err := t.ExecuteTemplate(w, "error", nil); err != nil {
+		log.Printf("template execution: %s", err)
 	}
 }
 
@@ -93,14 +93,14 @@ func (d *deps) showFileWithHighlight(name, content string, data map[string]any, 
 
 	iterator, err := lexer.Tokenise(nil, content)
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		return
 	}
 
 	var code bytes.Buffer
 	err = formatter.Format(&code, style, iterator)
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		return
 	}
 

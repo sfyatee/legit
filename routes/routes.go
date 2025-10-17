@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"git.icyphox.sh/legit/config"
-	"git.icyphox.sh/legit/git"
 	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/dustin/go-humanize"
 	"github.com/microcosm-cc/bluemonday"
-	"github.com/russross/blackfriday/v2"
+	"labs.sfyatee.com/labs/config"
+	"labs.sfyatee.com/labs/git"
+	"rsc.io/markdown"
 )
 
 type deps struct {
@@ -28,7 +28,7 @@ type deps struct {
 func (d *deps) Index(w http.ResponseWriter, r *http.Request) {
 	dirs, err := os.ReadDir(d.c.Repo.ScanPath)
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		log.Printf("reading scan path: %s", err)
 		return
 	}
@@ -61,7 +61,7 @@ func (d *deps) Index(w http.ResponseWriter, r *http.Request) {
 
 		c, err := gr.LastCommit()
 		if err != nil {
-			d.Write500(w)
+			d.errorPage(w)
 			log.Println(err)
 			return
 		}
@@ -114,7 +114,7 @@ func (d *deps) RepoIndex(w http.ResponseWriter, r *http.Request) {
 
 	commits, err := gr.Commits()
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		log.Println(err)
 		return
 	}
@@ -126,12 +126,23 @@ func (d *deps) RepoIndex(w http.ResponseWriter, r *http.Request) {
 		if len(content) > 0 {
 			switch ext {
 			case ".md", ".mkd", ".markdown":
-				unsafe := blackfriday.Run(
-					[]byte(content),
-					blackfriday.WithExtensions(blackfriday.CommonExtensions),
-				)
-				html := bluemonday.UGCPolicy().SanitizeBytes(unsafe)
-				readmeContent = template.HTML(html)
+				p := &markdown.Parser{
+					HeadingID:          true,
+					Strikethrough:      true,
+					TaskList:           true,
+					AutoLinkText:       true,
+					AutoLinkAssumeHTTP: true,
+					Table:              true,
+					Emoji:              true,
+					SmartDot:           true,
+					SmartDash:          true,
+					SmartQuote:         true,
+					Footnote:           true,
+				}
+				doc := p.Parse(content)
+				unsafeHTML := markdown.ToHTML(doc)
+				sanitized := bluemonday.UGCPolicy().SanitizeBytes([]byte(unsafeHTML))
+				readmeContent = template.HTML(string(sanitized))
 			default:
 				safe := bluemonday.UGCPolicy().SanitizeBytes([]byte(content))
 				readmeContent = template.HTML(
@@ -148,7 +159,7 @@ func (d *deps) RepoIndex(w http.ResponseWriter, r *http.Request) {
 
 	mainBranch, err := gr.FindMainBranch(d.c.Repo.MainBranch)
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		log.Println(err)
 		return
 	}
@@ -203,7 +214,7 @@ func (d *deps) RepoTree(w http.ResponseWriter, r *http.Request) {
 
 	files, err := gr.FileTree(treePath)
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		log.Println(err)
 		return
 	}
@@ -250,7 +261,7 @@ func (d *deps) FileContent(w http.ResponseWriter, r *http.Request) {
 
 	contents, err := gr.FileContent(treePath)
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		return
 	}
 	data := make(map[string]any)
@@ -351,7 +362,7 @@ func (d *deps) Log(w http.ResponseWriter, r *http.Request) {
 
 	commits, err := gr.Commits()
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		log.Println(err)
 		return
 	}
@@ -396,7 +407,7 @@ func (d *deps) Diff(w http.ResponseWriter, r *http.Request) {
 
 	diff, err := gr.Diff()
 	if err != nil {
-		d.Write500(w)
+		d.errorPage(w)
 		log.Println(err)
 		return
 	}
@@ -450,7 +461,7 @@ func (d *deps) Refs(w http.ResponseWriter, r *http.Request) {
 	branches, err := gr.Branches()
 	if err != nil {
 		log.Println(err)
-		d.Write500(w)
+		d.errorPage(w)
 		return
 	}
 
